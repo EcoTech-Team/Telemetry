@@ -24,7 +24,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "fatfs_sd.h"
+#include <string.h>
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,19 +45,53 @@
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
+UART_HandleTypeDef huart1;
+
+UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
+FATFS fs; // file system
+FIL fil; // file
+FRESULT fresult; // to store the result
+char buffer[1024]; // to store data
 
+UINT br, bw; // file read/write count
+
+/* capacity related variables */
+/* check capasity of the card */
+FATFS *pfs;
+DWORD fre_clust;
+uint32_t total, free_space;
+
+/* To send the data to the uart */
+void send_uart (char *string)
+{
+  uint8_t len = strlen(string);
+  HAL_UART_Transmit(&huart3, (uint8_t *) string, len, 2000); // transmit in blocking mode
+}
+
+/* Return size of data in the buffer */
+int bufsize (char *buf)
+{
+  int i=0;
+  while (*buf++ != '\0') i++;
+  return i;
+}
+
+void bufclear (void)
+{
+  for (int i=0; i<1024; i++)
+  {
+      buffer[i] = '\0';
+  }
+}
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
-static void xmit_spi (BYTE Data);
-static void SELECT (void);
-static void DESELECT (void);
-void SD_Init(void);
+static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -95,8 +131,40 @@ int main(void)
   MX_GPIO_Init();
   MX_SPI1_Init();
   MX_FATFS_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  /* Mount SD Card */
+  fresult = f_mount(&fs, "", 0);
+  if (fresult != FR_OK) 
+    send_uart("Error: can't mount SD Card...\n");
+  else
+    send_uart("SD Card mounted successfully...\n");
+  
+  /******************* Card capacity detals *******************/
+
+  /* Check free space */
+  f_getfree("", &fre_clust, &pfs);
+
+  total = (uint32_t)((pfs->n_fatent - 2) * pfs->csize * 0.5);
+  sprintf(buffer, "SD Card Total Size: \t%lu\n", total);
+  send_uart(buffer);
+  bufclear();
+  free_space = (uint32_t)(fre_clust * pfs->csize * 0.5);
+  sprintf(buffer, "SD Card Free Space: \t%lu\n", free_space);
+  send_uart(buffer);
+
+  /********************** File creation **********************/
+
+
+  /* Open file to write / create a file if it doesn't exists */
+  fresult = f_open(&fil, "Telemetry_test_file.txt", FA_OPEN_ALWAYS | FA_WRITE);
+
+  /* Write data and close file*/
+  fresult = f_puts("Telemetry System for Hydrogen Vehicle\n Test data 1\n", &fil);
+  fresult = f_close(&fil);
+
+  send_uart("Telemetry_test_file.txt created and the data is written...\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -121,10 +189,13 @@ void SystemClock_Config(void)
 
   /** Initializes the CPU, AHB and APB busses clocks 
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -133,12 +204,12 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
@@ -167,15 +238,11 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_HARD_OUTPUT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi1.Init.CRCPolynomial = 10;
-
-  // Start SPI
-  SPI_Cmd(SPI1, ENABLE);
-
   if (HAL_SPI_Init(&hspi1) != HAL_OK)
   {
     Error_Handler();
@@ -183,6 +250,39 @@ static void MX_SPI1_Init(void)
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
+  * @brief USART3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART3_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  /* USER CODE END USART3_Init 2 */
 
 }
 
@@ -216,18 +316,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PB10 */
-  GPIO_InitStruct.Pin = GPIO_PIN_10;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PB11 */
-  GPIO_InitStruct.Pin = GPIO_PIN_11;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
   /*Configure GPIO pin : SW3_Pin */
   GPIO_InitStruct.Pin = SW3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -237,47 +325,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-static
-void xmit_spi (BYTE Data)  	// Wyslanie bajtu do SD
-{
-  // Wyslanie bajtu
-  while (SPI_I2S_GetFlagStatus(SPI1, SPI_FLAG_TXE) == RESET);
-  SPI_I2S_SendData(SPI1, Data);
-}
 
-static
-void SELECT (void) 	// CS w stan niski
-{
-  GPIO_ResetBits(GPIOC, GPIO_PIN_7);
-  
-}
-
-static
-void DESELECT (void) 		// CS w stan wysoki
-{
-  GPIO_SetBits(GPIOC, GPIO_PIN_7);
-}
-
-void SD_Init(void)
-{
-  BYTE cmd_arg[6];
-  DESELECT(); //CS = 1
-
-  for (int i = 0; i < 10; i++)
-  {
-    xmit_spi(0xFF);
-  }
-
-  SELECT(); // CS = 0
-
-  // Przygotowanie ramki inicjujacej do wyslania
-  cmd_arg[0] = (CMD0 | 0x40);
-  cmd_arg[1] = 0;	// Argument komendy
-  cmd_arg[2] = 0;	// nawet, gdy komenda go nie ma
-  cmd_arg[3] = 0;	// musi zostac wyslany w postaci zer
-  cmd_arg[4] = 0;
-  cmd_arg[5] = 0x95;	// CRC = 0x95
-}
 /* USER CODE END 4 */
 
 /**
