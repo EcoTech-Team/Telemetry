@@ -116,8 +116,7 @@ DRESULT USER_read (
 )
 {
   /* USER CODE BEGIN READ */
-    return SD_disk_read(pdrv, buff, sector, count); // We don't use it in this
-                                                    // project
+    return SD_disk_read(pdrv, buff, sector, count);
   /* USER CODE END READ */
 }
 

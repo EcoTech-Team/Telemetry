@@ -132,19 +132,47 @@ int main(void)
   MX_FATFS_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  HAL_Delay(500);
   /* Mount SD Card */
-  fresult = f_mount(&fs, "", 0);
+  fresult = f_mount(&fs, "", 1);
   if (fresult != FR_OK) 
     send_uart("Error: can't mount SD Card...\n");
-  else
+  else if (fresult == FR_OK)
     send_uart("SD Card mounted successfully...\n");
   
-  /******************* Card capacity detals *******************/
+  if (fresult == FR_NOT_ENABLED)
+    send_uart("FR_NOT_ENABLED...\n");
+  else if (fresult == FR_NOT_READY)
+    send_uart("FR_NOT_READY...\n");
+  else if (fresult == FR_NO_FILESYSTEM)
+    send_uart("FR_NO_FILESYSTEM...\n");
+  else if (fresult == FR_DISK_ERR)
+    send_uart("FR_DISK_ERR...\n");
+  else if (fresult == FR_INVALID_DRIVE)
+    send_uart("FR_INVALID_DRIVE...\n");
+
+/******************* Card capacity detals *******************/
 
   /* Check free space */
-  f_getfree("", &fre_clust, &pfs);
+  fresult = f_getfree("", &fre_clust, &pfs);
 
+  if (fresult == FR_OK)
+    send_uart("f_getfree FR_OK...\n");
+  else if (fresult == FR_NOT_ENABLED)
+    send_uart("f_getfree FR_NOT_ENABLED...\n");
+  else if (fresult == FR_NOT_READY)
+    send_uart("f_getfree FR_NOT_READY...\n");
+  else if (fresult == FR_NO_FILESYSTEM)
+    send_uart("f_getfree FR_NO_FILESYSTEM...\n");
+  else if (fresult == FR_DISK_ERR)
+    send_uart("f_getfree FR_DISK_ERR...\n");
+  else if (fresult == FR_INVALID_DRIVE)
+    send_uart("f_getfree FR_INVALID_DRIVE...\n");
+  else if (fresult == FR_INT_ERR)
+    send_uart("f_getfree FR_INT_ERR...\n");
+  else if (fresult == FR_TIMEOUT)
+    send_uart("f_getfree FR_TIMEOUT...\n");
+  
   total = (uint32_t)((pfs->n_fatent - 2) * pfs->csize * 0.5);
   sprintf(buffer, "SD Card Total Size: \t%lu\n", total);
   send_uart(buffer);
@@ -157,13 +185,48 @@ int main(void)
 
 
   /* Open file to write / create a file if it doesn't exists */
-  fresult = f_open(&fil, "Telemetry_test_file.txt", FA_OPEN_ALWAYS | FA_WRITE);
+  fresult = f_open(&fil, "telemetry.txt", FA_OPEN_ALWAYS | FA_WRITE);
+
+  if (fresult == FR_OK)
+    send_uart("f_getfree FR_OK...\n");
+  else if (fresult == FR_NOT_ENABLED)
+    send_uart("f_getfree FR_NOT_ENABLED...\n");
+  else if (fresult == FR_NOT_READY)
+    send_uart("f_getfree FR_NOT_READY...\n");
+  else if (fresult == FR_NO_FILESYSTEM)
+    send_uart("f_getfree FR_NO_FILESYSTEM...\n");
+  else if (fresult == FR_DISK_ERR)
+    send_uart("f_getfree FR_DISK_ERR...\n");
+  else if (fresult == FR_INVALID_DRIVE)
+    send_uart("f_getfree FR_INVALID_DRIVE...\n");
+  else if (fresult == FR_INT_ERR)
+    send_uart("f_getfree FR_INT_ERR...\n");
+  else if (fresult == FR_TIMEOUT)
+    send_uart("f_getfree FR_INT_ERR...\n");
+  else if (fresult == FR_NO_PATH)
+    send_uart("f_getfree FR_NO_PATH...\n");
+  else if (fresult == FR_INVALID_NAME)
+    send_uart("f_getfree FR_INVALID_NAME...\n");
+  else if (fresult == FR_DENIED)
+    send_uart("f_getfree FR_DENIED...\n");
+  else if (fresult == FR_INVALID_OBJECT)
+    send_uart("f_getfree FR_INVALID_OBJECT...\n");
+  else if (fresult == FR_WRITE_PROTECTED)
+    send_uart("f_getfree FR_WRITE_PROTECTED...\n");
+  else if (fresult == FR_LOCKED)
+    send_uart("f_getfree FR_LOCKED...\n");
+  else if (fresult == FR_NOT_ENOUGH_CORE)
+    send_uart("f_getfree FR_NOT_ENOUGH_CORE...\n");
 
   /* Write data and close file*/
   fresult = f_puts("Telemetry System for Hydrogen Vehicle\n Test data 1\n", &fil);
   fresult = f_close(&fil);
 
   send_uart("Telemetry_test_file.txt created and the data is written...\n");
+  
+  fresult = f_mount(NULL, "", 1);
+  if (fresult == FR_OK) 
+    send_uart ("SD CARD UNMOUNTED successfully...\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -236,8 +299,8 @@ static void MX_SPI1_Init(void)
   hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi1.Init.NSS = SPI_NSS_HARD_OUTPUT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -300,10 +363,10 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, LED3_Pin|LED2_Pin|LED1_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, LED3_Pin|LED2_Pin|LED1_Pin|GPIO_PIN_4, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : LED3_Pin LED2_Pin LED1_Pin */
-  GPIO_InitStruct.Pin = LED3_Pin|LED2_Pin|LED1_Pin;
+  /*Configure GPIO pins : LED3_Pin LED2_Pin LED1_Pin PA4 */
+  GPIO_InitStruct.Pin = LED3_Pin|LED2_Pin|LED1_Pin|GPIO_PIN_4;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;

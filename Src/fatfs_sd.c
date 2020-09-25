@@ -16,14 +16,14 @@
 #include "fatfs_sd.h"
 
 extern SPI_HandleTypeDef hspi1;
-extern volatile uint8_t Timer1, Timer2;                 /* 10ms 마다 감소하는 타이머 */
+extern volatile uint8_t Timer1, Timer2;                    /* 10ms 마다 감소하는 타이머 */
 
 static volatile DSTATUS Stat = STA_NOINIT;              /* 디스크 상태 Flag*/
 static uint8_t CardType;                                /* SD 타입 0:MMC, 1:SDC, 2:Block addressing */
 static uint8_t PowerFlag = 0;                           /* Power 상태 Flag */
 
-#define SD_CS_GPIO_Port GPIOA
-#define SD_CS_Pin GPIO_PIN_4
+#define SD_CS_GPIO_Port GPIOB
+#define SD_CS_Pin GPIO_PIN_0
 
 /* SPI Chip Select */
 static void SELECT(void)
@@ -172,8 +172,7 @@ static bool SD_RxDataBlock(BYTE *buff, UINT btr)
 #if _READONLY == 0
 static bool SD_TxDataBlock(const BYTE *buff, BYTE token)
 {
-  uint8_t resp =0;
-  uint8_t wc = 0;
+  uint8_t resp, wc;
   uint8_t i = 0;
 
   /* SD카드 준비 대기 */
