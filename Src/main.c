@@ -24,7 +24,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "fatfs_sd.h"
+#include "spi_controller.h"
 #include <string.h>
 #include <stdio.h>
 /* USER CODE END Includes */
@@ -134,16 +134,44 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   /* Mount SD Card */
-  fresult = f_mount(&fs, "", 0);
-  if (fresult != FR_OK) 
+  fresult = f_mount(&fs, "", 1);
+  if (fresult != FR_OK)
     send_uart("Error: can't mount SD Card...\n");
   else
     send_uart("SD Card mounted successfully...\n");
-  
-  /******************* Card capacity detals *******************/
+
+  if (fresult == FR_NOT_ENABLED)
+    send_uart("FR_NOT_ENABLED...\n");
+  else if (fresult == FR_NOT_READY)
+    send_uart("FR_NOT_READY...\n");
+  else if (fresult == FR_NO_FILESYSTEM)
+    send_uart("FR_NO_FILESYSTEM...\n");
+  else if (fresult == FR_DISK_ERR)
+    send_uart("FR_DISK_ERR...\n");
+  else if (fresult == FR_INVALID_DRIVE)
+    send_uart("FR_INVALID_DRIVE...\n");
+
+/******************* Card capacity detals *******************/
 
   /* Check free space */
-  f_getfree("", &fre_clust, &pfs);
+  fresult = f_getfree("", &fre_clust, &pfs);
+
+  if (fresult == FR_OK)
+    send_uart("f_getfree FR_OK...\n");
+  else if (fresult == FR_NOT_ENABLED)
+    send_uart("f_getfree FR_NOT_ENABLED...\n");
+  else if (fresult == FR_NOT_READY)
+    send_uart("f_getfree FR_NOT_READY...\n");
+  else if (fresult == FR_NO_FILESYSTEM)
+    send_uart("f_getfree FR_NO_FILESYSTEM...\n");
+  else if (fresult == FR_DISK_ERR)
+    send_uart("f_getfree FR_DISK_ERR...\n");
+  else if (fresult == FR_INVALID_DRIVE)
+    send_uart("f_getfree FR_INVALID_DRIVE...\n");
+  else if (fresult == FR_INT_ERR)
+    send_uart("f_getfree FR_INT_ERR...\n");
+  else if (fresult == FR_TIMEOUT)
+    send_uart("f_getfree FR_TIMEOUT...\n");
 
   total = (uint32_t)((pfs->n_fatent - 2) * pfs->csize * 0.5);
   sprintf(buffer, "SD Card Total Size: \t%lu\n", total);
@@ -164,6 +192,10 @@ int main(void)
   fresult = f_close(&fil);
 
   send_uart("Telemetry_test_file.txt created and the data is written...\n");
+
+  fresult = f_mount(NULL, "", 1);
+  if (fresult == FR_OK)
+    send_uart ("SD CARD UNMOUNTED successfully...\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -186,7 +218,7 @@ void SystemClock_Config(void)
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
-  /** Initializes the CPU, AHB and APB busses clocks 
+  /** Initializes the CPU, AHB and APB busses clocks
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
@@ -199,7 +231,7 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  /** Initializes the CPU, AHB and APB busses clocks 
+  /** Initializes the CPU, AHB and APB busses clocks
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
