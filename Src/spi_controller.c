@@ -37,11 +37,11 @@ static void DESELECT(void)
   HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_SET);
 }
 
-static void SPI_Write_Byte(BYTE *data)
+static void SPI_Write_Byte(BYTE data)
 {
   /* Try to transmit data byte until SPI get into STATE_READY state */
-  while(HAL_SPI_GetState(&hspi1) != HAL_SPI_STATE_READY)
-  HAL_SPI_Transmit(&hspi1, data, 1, SPI_TIMEOUT);
+  while(HAL_SPI_GetState(&hspi1) != HAL_SPI_STATE_READY);
+  HAL_SPI_Transmit(&hspi1, &data, 1, SPI_TIMEOUT);
 }
 
 /*
@@ -52,10 +52,10 @@ high during read transfer (send a 0xFF and get the received data)
 */
 static uint8_t SPI_Read_Byte(void)
 {
-  uint8_t data = 0;
   uint8_t dummy_data = 0xFF;
+  uint8_t data = 0;
 
-  while(HAL_SPI_GetState(&hspi1) != HAL_SPI_STATE_READY)
+  while ((HAL_SPI_GetState(&hspi1) != HAL_SPI_STATE_READY));
   HAL_SPI_TransmitReceive(&hspi1, &dummy_data, &data, 1, SPI_TIMEOUT);
 
   return data;
