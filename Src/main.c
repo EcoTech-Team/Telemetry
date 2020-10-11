@@ -17,7 +17,6 @@
   ******************************************************************************
   */
 /* USER CODE END Header */
-
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "fatfs.h"
@@ -132,24 +131,13 @@ int main(void)
   MX_FATFS_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  HAL_Delay(500);
   /* Mount SD Card */
   fresult = f_mount(&fs, "", 1);
   if (fresult != FR_OK)
     send_uart("Error: can't mount SD Card...\n");
   else
     send_uart("SD Card mounted successfully...\n");
-
-  if (fresult == FR_NOT_ENABLED)
-    send_uart("FR_NOT_ENABLED...\n");
-  else if (fresult == FR_NOT_READY)
-    send_uart("FR_NOT_READY...\n");
-  else if (fresult == FR_NO_FILESYSTEM)
-    send_uart("FR_NO_FILESYSTEM...\n");
-  else if (fresult == FR_DISK_ERR)
-    send_uart("FR_DISK_ERR...\n");
-  else if (fresult == FR_INVALID_DRIVE)
-    send_uart("FR_INVALID_DRIVE...\n");
 
 /******************* Card capacity detals *******************/
 
@@ -185,10 +173,14 @@ int main(void)
 
 
   /* Open file to write / create a file if it doesn't exists */
-  fresult = f_open(&fil, "Telemetry_test_file.txt", FA_OPEN_ALWAYS | FA_WRITE);
+  fresult = f_open(&fil, "telemetry2.txt", FA_OPEN_ALWAYS | FA_WRITE);
 
   /* Write data and close file*/
+  fresult = f_lseek(&fil, f_size(&fil));
+
   fresult = f_puts("Telemetry System for Hydrogen Vehicle\n Test data 1\n", &fil);
+  fresult = f_puts("Received data from main line\n Test data 2\n", &fil);
+
   fresult = f_close(&fil);
 
   send_uart("Telemetry_test_file.txt created and the data is written...\n");
@@ -218,7 +210,8 @@ void SystemClock_Config(void)
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
-  /** Initializes the CPU, AHB and APB busses clocks
+  /** Initializes the RCC Oscillators according to the specified parameters
+  * in the RCC_OscInitTypeDef structure.
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
@@ -231,7 +224,7 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  /** Initializes the CPU, AHB and APB busses clocks
+  /** Initializes the CPU, AHB and APB buses clocks
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
@@ -332,10 +325,10 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, LED3_Pin|LED2_Pin|LED1_Pin|GPIO_PIN_4, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, LED3_Pin|LED2_Pin|LED1_Pin|SPI1_CS_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : LED3_Pin LED2_Pin LED1_Pin PA4 */
-  GPIO_InitStruct.Pin = LED3_Pin|LED2_Pin|LED1_Pin|GPIO_PIN_4;
+  /*Configure GPIO pins : LED3_Pin LED2_Pin LED1_Pin SPI1_CS_Pin */
+  GPIO_InitStruct.Pin = LED3_Pin|LED2_Pin|LED1_Pin|SPI1_CS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
