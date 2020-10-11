@@ -17,6 +17,8 @@
 
 extern SPI_HandleTypeDef hspi1;
 extern volatile uint8_t Timer1, Timer2;
+static volatile DSTATUS d_stat = STA_NOINIT;
+static int8_t cardType;
 
 #define SD_CS_GPIO_Port GPIOA
 #define SD_CS_Pin GPIO_PIN_4
@@ -78,8 +80,8 @@ static uint8_t SPI_Wait_Ready(void)
 
 static void Power_ON(void)
 {
-  BYTE frame_arg[6];
-  uint32_t counter = 4096;
+  uint8_t frame_arg[6], res;
+  uint32_t counter = 0x1FFF;
   // CS line to high
   DESELECT();
 
@@ -91,7 +93,7 @@ static void Power_ON(void)
   // CS line to low
   SELECT();
 
-  // command frame has 42bytes
+  // command frame has 48bytes
   frame_arg[0] = CMD0;
   frame_arg[1] = 0;
   frame_arg[2] = 0;
@@ -100,11 +102,13 @@ static void Power_ON(void)
   frame_arg[5] = 0x95;
 
   for(int i=0; i < 6; i++)
-  SPI_Write_Byte(frame_arg[i]);
+    SPI_Write_Byte(frame_arg[i]);
 
   // Wait for R1 with IN_IDLE_STATE flag set
-  while(SPI_Read_Byte() != 0x01 && counter)
-    counter--;
+  do
+  {
+    res = SPI_Read_Byte();
+  } while ((res != 0x01) && counter--);
 
   DESELECT();
   SPI_Write_Byte(0xFF);
@@ -112,16 +116,23 @@ static void Power_ON(void)
   PowerFlag = 1;
 }
 
-static void SPI_SendCMD(BYTE cmd, DWORD arg)
+static void Power_OFF(void)
+{
+  PowerFlag = 0;
+}
+
+static BYTE SPI_SendCMD(BYTE cmd, DWORD arg)
 {
   BYTE frame_arg[6];
   BYTE crc;
-  // CS line to low
-  SELECT();
+  BYTE res;
 
-  if (cmd = CMD0)
+  if (SPI_Wait_Ready() != 0xFF)
+    return 0xFF;
+
+  if (cmd == CMD0)
     crc = 0x95;
-  else if(cmd = CMD8)
+  else if(cmd == CMD8)
     crc = 0x87;
   else
     crc = 0;
@@ -135,75 +146,420 @@ static void SPI_SendCMD(BYTE cmd, DWORD arg)
   frame_arg[5] = crc;
 
   for(int i=0; i < 6; i++)
-  SPI_Write_Byte(frame_arg[i]);
+    SPI_Write_Byte(frame_arg[i]);
 
-}
-/*
-*  Execute from user_diskio.c
-*/
-DSTATUS SD_disk_initialize(BYTE pdrv)
-{
-  WORD buff = 0;
-  Timer1 = 100;       // 1000ms
-  if (PowerFlag == 0)
-    Power_ON();
-  else
+  // skip one byte after send STOP_TRAN command
+  if (cmd == CMD12)
+    SPI_Read_Byte();
+
+  UINT n = 10;
+  do
   {
-    SPI_SendCMD(CMD0, 0);
+    res = SPI_Read_Byte();
+  } while ((res & 0x80) && n--);
 
-    while(1)
-    {
-      if(SPI_Read_Byte() == 0x01)
-      {
-        /* Card is SDC Ver.2+ */
-        SPI_SendCMD(CMD8, 0x1AA);
-        for(int i=0; i < 5; i++)
-        {
-          if (i == 0 && SPI_Read_Byte() == 0x05) // Error: illegal CMD
-          {
-            buff = 0x05;
-            break;
-          }
+  return res;
+}
 
-          if (i == 3)
-            buff = (SPI_Read_Byte() << 8);
-          else if (i == 4)
-            buff = SPI_Read_Byte();
-        }
+/*
+ *  When CMD17 is accepted, a read operation is initializing and the data
+ *  block is sent to the HOST. If HOST receives valid DATA TOKEN (0xFE -
+ *  CMD17 / 18/24) it means that HOST read DATA BLOCK and CRC. If any error
+ *  occurs ERROR TOKEN will be received instead of DATA PACKET.
+ */
+static DRESULT Disk_Read_Sigle_Block (BYTE *buff, UINT length)
+{
+  BYTE data;
+  length -= 1;
 
-        if (buff == 0x1AA)
-        {
-          BYTE resp;
-          do
-          {
-            SPI_SendCMD(CMD41, 0x40000000);
-            resp = SPI_Read_Byte();
-          }
-          while(resp == 0x01 && Timer1);
+  // Check Data/Error token
+  do
+  {
+    data = SPI_Read_Byte();
+    if ((data ^ 0xE0) == 0xE0)
+      return RES_ERROR;
+  }
+  while(data != 0xFE);
 
-          if (resp == 0x00)
-            SPI_SendCMD(CMD58, 0);
-        }
-        else if (buff == 0x05)
-        {
-          /* Card is SDC Ver.1 */
-          BYTE resp;
-          do
-          {
-            SPI_SendCMD(CMD41, 0);
-            resp = SPI_Read_Byte();
-          }
-          while(resp == 0x01 && Timer1);
+  do
+  {
+    *buff = SPI_Read_Byte();
+    buff++;
+  }
+  while (length--);
 
-          if (resp == 0x00)
-            SPI_SendCMD(CMD16, 0x200);
-          //else if (resp == 0x05) // Idk if it is necessary
-        }
-      }
-      else
-      {
-        /* Unknown card. Run Power OFF */
-      }
+  // CRC bytes
+  SPI_Read_Byte();
+  SPI_Read_Byte();
+
+  return RES_OK;
+}
+
+static DRESULT Disk_Read_Multiple_Blocks (BYTE *buff, UINT block_num, UINT length)
+{
+  DRESULT res = RES_OK;
+  do
+  {
+    res = Disk_Read_Sigle_Block(buff, length);
+
+    if (res != RES_OK)
+      break;
+  } while (block_num--);
+
+  // Terminate read transaction
+  SPI_SendCMD(CMD12, 0);
+
+  if (SPI_Wait_Ready() != 0xFF)
+    res = RES_NOTRDY;
+
+  return res;
+}
+
+static DRESULT Disk_Write_Sigle_Block (const BYTE *data, UINT length)
+{
+  DRESULT res = RES_OK;
+
+  // Data Token for CMD24
+  SPI_Write_Byte(0xFE);
+
+  for (int i = 0; i < length; i++) {
+    SPI_Write_Byte(*data);
+    data++;
+  }
+  // Send fixed CRC
+  SPI_Write_Byte(0x00);
+  SPI_Write_Byte(0x00);
+
+  // Busy flag
+  if (SPI_Wait_Ready() != 0xFF)
+    return RES_NOTRDY;
+
+  return res;
+}
+
+static DRESULT Disk_Write_Multiple_Blocks (const BYTE *data, UINT *block_num, UINT length)
+{
+  DRESULT res = RES_OK;
+
+  // Data Token for CMD25
+  SPI_Write_Byte(0xFC);
+
+  for (int n = *block_num; n > 1; n--)
+  {
+    // Sector have 512B
+    for (int i = 0; i < length; i++) {
+      SPI_Write_Byte(*data);
+      data++;
+    }
+
+    // Send fixed CRC
+    SPI_Write_Byte(0x00);
+    SPI_Write_Byte(0x00);
+
+    // Busy flag
+    if (SPI_Wait_Ready() != 0xFF) {
+      res = RES_NOTRDY;
+      break;
     }
   }
+
+  // Send Stop Tran Tocken
+  SPI_Write_Byte(0xFD);
+
+  if (SPI_Wait_Ready() != 0xFF)
+    res = RES_NOTRDY;
+
+  return res;
+}
+
+/*
+ *  Execute from user_diskio.c
+ */
+DSTATUS SD_disk_initialize (BYTE disk)
+{
+  WORD buff = 0;
+  BYTE resp1, resp2;
+  uint8_t ocr[4];
+  Timer1 = 100;       // 1000ms
+  cardType = 0;
+
+  // Telemetry board have one SD card slot, so drive should be 0
+  if (disk)
+    return d_stat = STA_NODISK;
+
+  if (d_stat & STA_NODISK)
+    return STA_NOINIT;
+
+  Power_ON();
+
+  SELECT();
+
+  if(SPI_SendCMD(CMD0, 0) == 0x01) {
+
+    /* Card is SDC Ver.2+ */
+    if (SPI_SendCMD(CMD8, 0x1AA) == 0x01)
+    {
+      for(int i=0; i < 4; i++)
+      {
+        if (i == 2)
+          buff = (WORD)(SPI_Read_Byte()) << 8;
+        else if (i == 3)
+          buff += (WORD)(SPI_Read_Byte());
+        else
+          SPI_Read_Byte();
+      }
+
+      if (buff == 0x1AA)
+      {
+        do
+        {
+          // ACMD<n> means a command sequense of CMD55-CMD<n>.
+          resp1 = SPI_SendCMD(CMD55, 0);
+          resp2 = SPI_SendCMD(CMD41, 0x40000000);
+        }
+        while(resp1 == 0x01 && resp2 == 0x01 && Timer1);
+
+        if (resp2 == 0x00)
+        {
+          resp1 = SPI_SendCMD(CMD58, 0);
+
+          // Read OCR register
+          for (int i=0; i < 4; i++)
+            ocr[i] = SPI_Read_Byte();
+
+          cardType = SDv2_BLOCK;
+
+          if (!(ocr[0] & 0x40)) {
+            // CCS flag isn't set
+            // Force block size to 512 bytes to work with FAT file system
+            if (SPI_SendCMD(CMD16, 0x200) == 0x00)
+              cardType = SDv2_BYTE;
+            else
+              cardType = 0;
+          }
+        }
+      }
+    }
+    else
+    {
+      /* Card is SDC Ver.1 */
+      Timer1 = 100;
+      do
+      {
+        // ACMD<n> means a command sequense of CMD55-CMD<n>.
+        resp1 = SPI_SendCMD(CMD55, 0);
+        resp2 = SPI_SendCMD(CMD41, 0);
+      }
+      while(resp1 == 0x01 && resp2 == 0x01 && Timer1);
+
+      cardType = SDv1;
+
+      /* Card is MMC Ver.3 */
+      if ((resp1 != 0x00  && resp2 != 0x00) || !Timer1)
+      {
+        Timer1 = 100;
+
+        do resp1 = SPI_SendCMD(CMD1, 0);
+        while(resp1 == 0x01 && Timer1);
+
+        cardType = MMCv3;
+      }
+
+      if (resp1 != 0x00 || !Timer1)
+          cardType = 0;
+      else if (resp1 == 0x00)
+        SPI_SendCMD(CMD16, 0x200);
+    }
+  }
+
+  DESELECT();
+  SPI_Read_Byte();
+
+  if(cardType != 0)
+    // CLEAR STA_NOINIT
+    d_stat &= ~STA_NOINIT;
+  else
+    Power_OFF();
+
+  return d_stat;
+}
+
+DSTATUS SD_disk_status (BYTE disk)
+{
+  // Telemetry board have one SD card slot, so disk number should be 0
+  if (disk)
+    return d_stat = STA_NODISK;
+  return d_stat;
+}
+
+DRESULT SD_disk_read (BYTE disk, BYTE* buff, DWORD sector, UINT count)
+{
+  DRESULT res = RES_OK;
+
+  if (disk || !(count))
+    return RES_PARERR;
+
+  if (d_stat == STA_NOINIT)
+    return RES_NOTRDY;
+
+  if (d_stat == STA_PROTECT)
+    return RES_WRPRT;
+
+  SELECT();
+  // If some error occure maybe it is caused by wrong sector conversion.
+  // In this case conversion from "WORD" to "BYTE" address is needed.
+  if (cardType != SDv2_BLOCK)
+    sector *= 512;
+  // The sector address in LBA specified by upper layer must be scaled properly // depends on the card's addressing mode. (Check what that mean)
+  if (count > 1) {
+    // Send request to SD Card to read multiple blocks in sequence from
+    // specified address
+    if (SPI_SendCMD(CMD18, sector) == 0x00)
+      res = Disk_Read_Multiple_Blocks(buff, count, 512);
+  }
+  else {
+    if (SPI_SendCMD(CMD17, sector) == 0x00)
+      res = Disk_Read_Sigle_Block(buff, 512);
+  }
+
+  DESELECT();
+  SPI_Read_Byte();
+
+  return res;
+}
+
+DRESULT SD_disk_write (BYTE disk, const BYTE* buff, DWORD sector, UINT count)
+{
+  DRESULT res = RES_ERROR;
+
+  if (disk || !(count))
+    return RES_PARERR;
+
+  if (d_stat == STA_NOINIT)
+    return RES_NOTRDY;
+
+  if (cardType != SDv2_BLOCK)
+    sector *= 512;
+
+  SELECT();
+
+  if (count == 1)
+  {
+    if (SPI_SendCMD(CMD24, sector) == 0x00)
+    {
+      // make space between received CMD resp. and write Data Packet
+      SPI_Read_Byte();
+      res = Disk_Write_Sigle_Block(buff, 512);
+    }
+  }
+  else
+  {
+    if (SPI_SendCMD(CMD25, sector) == 0x00)
+    {
+      // make space between received CMD resp. and write Data Packet
+      SPI_Read_Byte();
+      res = Disk_Write_Multiple_Blocks(buff, &count, 512);
+    }
+  }
+
+  DESELECT();
+  SPI_Read_Byte();
+
+  return res;
+}
+
+DRESULT SD_disk_ioctl (BYTE disk, BYTE cmd, void* buff)
+{
+  DRESULT res;
+  BYTE n, csd[16];
+  BYTE *ptr = buff;
+  DWORD csize;
+
+  if (disk)
+    return RES_PARERR;
+
+  if (d_stat == STA_NOINIT)
+    return RES_NOTRDY;
+
+  SELECT();
+
+  res = RES_ERROR;
+
+  switch (cmd)
+  {
+    case CTRL_SYNC:
+      if (SPI_Wait_Ready() == 0xFF)
+        res = RES_OK;
+      break;
+    case GET_SECTOR_COUNT:
+      if  (SPI_SendCMD(CMD9, 0) == 0x00 &&
+          Disk_Read_Sigle_Block(csd, 16) == RES_OK)
+      {
+        if ((csd[0] >> 6) == 1)
+        {
+          /* SDC ver 2.00 */
+          csize = csd[9] + ((WORD)csd[8] << 8) + ((DWORD)(csd[7] & 63) << 16) + 1;
+          *(DWORD*)buff = csize << 10;
+        }
+        else
+        {
+          /* SDC ver 1.XX or MMC ver 3 */
+          n = (csd[5] & 15) + ((csd[10] & 128) >> 7) + ((csd[9] & 3) << 1) + 2;
+          csize = (csd[8] >> 6) + ((WORD)csd[7] << 2) + ((WORD)(csd[6] & 3) << 10) + 1;
+          *(DWORD*)buff = csize << (n - 9);
+        }
+        res = RES_OK;
+      }
+      break;
+    case GET_BLOCK_SIZE:
+      if (cardType == SDv2_BYTE) {	/* SDC ver 2.00 byte adresing*/
+        if (SPI_SendCMD(CMD55, 0) == 0
+         && SPI_SendCMD(CMD13, 0) == 0) {	/* Read SD status */
+          SPI_Write_Byte(0xFF);
+          if (Disk_Read_Sigle_Block(csd, 16)) {				/* Read partial block */
+            for (n = 64 - 16; n; n--) SPI_Write_Byte(0xFF);	/* Purge trailing data */
+            *(DWORD*)buff = 16UL << (csd[10] >> 4);
+            res = RES_OK;
+          }
+        }
+      }
+      else {	/* SDC ver 1.XX or MMC */
+        if ((SPI_SendCMD(CMD9, 0) == 0) && Disk_Read_Sigle_Block(csd, 16)) {	/* Read CSD */
+          if (cardType == SDv1) {
+            *(DWORD*)buff = (((csd[10] & 63) << 1) + ((WORD)(csd[11] & 128) >> 7) + 1) << ((csd[13] >> 6) - 1);
+          } else if (cardType == MMCv3){
+            *(DWORD*)buff = ((WORD)((csd[10] & 124) >> 2) + 1) * (((csd[11] & 3) << 3) + ((csd[11] & 224) >> 5) + 1);
+          }
+          res = RES_OK;
+        }
+      }
+      break;
+    case MMC_GET_CSD:
+			/* SEND_CSD */
+			if (SPI_SendCMD(CMD9, 0) == 0 && Disk_Read_Sigle_Block(ptr, 16) == RES_OK)
+        res = RES_OK;
+			break;
+		case MMC_GET_CID:
+			/* SEND_CID */
+			if (SPI_SendCMD(CMD10, 0) == 0 && Disk_Read_Sigle_Block(ptr, 16) == RES_OK)
+        res = RES_OK;
+			break;
+		case MMC_GET_OCR:
+			/* READ_OCR */
+			if (SPI_SendCMD(CMD58, 0) == 0)
+			{
+				for (n = 0; n < 4; n++)
+				{
+					*ptr++ = SPI_Read_Byte();
+				}
+				res = RES_OK;
+			}
+      break;
+    default:
+      res = RES_PARERR;
+  }
+
+  DESELECT();
+  SPI_Read_Byte();
+  return res;
 }

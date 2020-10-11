@@ -19,6 +19,7 @@
 #define CMD9     (0x40+9)     /* SEND_CSD */
 #define CMD10    (0x40+10)    /* SEND_CID */
 #define CMD12    (0x40+12)    /* STOP_TRANSMISSION */
+#define CMD13    (0x40+13)    /* SD_STATUS (SDC) */
 #define CMD16    (0x40+16)    /* SET_BLOCKLEN */
 #define CMD17    (0x40+17)    /* READ_SINGLE_BLOCK */
 #define CMD18    (0x40+18)    /* READ_MULTIPLE_BLOCK */
@@ -36,6 +37,12 @@ DRESULT SD_disk_write (BYTE pdrv, const BYTE* buff, DWORD sector, UINT count);
 DRESULT SD_disk_ioctl (BYTE pdrv, BYTE cmd, void* buff);
 
 #define SPI_TIMEOUT 1000
+
+// Card types
+#define SDv2_BLOCK  1
+#define SDv2_BYTE   2
+#define SDv1        3
+#define MMCv3       4
 
 #endif
 
