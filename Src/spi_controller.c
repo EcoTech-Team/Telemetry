@@ -6,12 +6,7 @@
 *   Reference article: elm-chan.org/docs/mmc/mmc_e.html     *
 *                                                           */
 
-#define TRUE  1
-#define FALSE 0
-#define bool BYTE
-
 #include "stm32f1xx_hal.h"
-
 #include "diskio.h"
 #include "spi_controller.h"
 
@@ -410,7 +405,7 @@ DRESULT SD_disk_read (BYTE disk, BYTE* buff, DWORD sector, UINT count)
   // In this case conversion from "WORD" to "BYTE" address is needed.
   if (cardType != SDv2_BLOCK)
     sector *= 512;
-  // The sector address in LBA specified by upper layer must be scaled properly // depends on the card's addressing mode. (Check what that mean)
+
   if (count > 1) {
     // Send request to SD Card to read multiple blocks in sequence from
     // specified address
