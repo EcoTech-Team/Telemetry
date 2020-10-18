@@ -57,6 +57,7 @@ Middlewares/Third_Party/FatFs/src/ff_gen_drv.c \
 Middlewares/Third_Party/FatFs/src/option/ccsbcs.c \
 Middlewares/Third_Party/FatFs/src/option/syscall.c \
 Src/fatfs.c \
+Src/led_controller.c \
 Src/main.c \
 Src/spi_controller.c \
 Src/stm32f1xx_hal_msp.c \
