@@ -29,6 +29,8 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f1xx_hal.h"
+#include <stdlib.h>
+#include <stdbool.h>
 
 void Error_Handler(void);
 

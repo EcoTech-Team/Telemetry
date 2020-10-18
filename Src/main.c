@@ -19,16 +19,19 @@
 #include "main.h"
 #include "fatfs.h"
 #include "spi_controller.h"
+#include "led_controller.h"
 #include <string.h>
 #include <stdio.h>
 
 
-/* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
-/* USER CODE END PD */
-
-/* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
+/* Private variables ---------------------------------------------------------*/
+struct
+{
+  // uint8_t addr; // For now only one address exist (0x01)
+  uint8_t Command;
+  uint8_t Length;
+  uint8_t *Payload;
+} ML_Frame;
 
 
 SPI_HandleTypeDef hspi1;
@@ -36,10 +39,9 @@ UART_HandleTypeDef huart3;
 
 FATFS fs; // file system
 FIL fil; // file
+FILINFO fno; // file info
 FRESULT fresult; // to store the result
-char buffer[1024]; // to store data
-
-UINT br, bw; // file read/write count
+uint8_t buffer[1024]; // to store data
 
 /* capacity related variables */
 /* check capasity of the card */
@@ -55,7 +57,7 @@ void send_uart (char *string)
 }
 
 /* Return size of data in the buffer */
-int bufsize (char *buf)
+int bufsize (uint8_t *buf)
 {
   int i=0;
   while (*buf++ != '\0') i++;
@@ -64,9 +66,9 @@ int bufsize (char *buf)
 
 void bufclear (void)
 {
-  for (int i=0; i<1024; i++)
+  for (int i = 0; i < ML_Frame.Length; i++)
   {
-      buffer[i] = '\0';
+      ML_Frame.Payload[i] = '\0';
   }
 }
 
@@ -75,9 +77,9 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART3_UART_Init(void);
-/* USER CODE BEGIN PFP */
-
-/* USER CODE END PFP */
+uint8_t RX_Byte (void);
+void MainLine_FrameHandler (void);
+void WriteDataToCard (void);
 
 
 /**
@@ -94,7 +96,10 @@ int main(void)
   MX_SPI1_Init();
   MX_FATFS_Init();
   MX_USART3_UART_Init();
-  /* USER CODE BEGIN 2 */
+
+  /* Configure the system clock */
+  SystemClock_Config();
+
   HAL_Delay(500);
   /* Mount SD Card */
   fresult = f_mount(&fs, "", 1);
@@ -126,43 +131,104 @@ int main(void)
     send_uart("f_getfree FR_TIMEOUT...\n");
 
   total = (uint32_t)((pfs->n_fatent - 2) * pfs->csize * 0.5);
-  sprintf(buffer, "SD Card Total Size: \t%lu\n", total);
-  send_uart(buffer);
-  bufclear();
   free_space = (uint32_t)(fre_clust * pfs->csize * 0.5);
-  sprintf(buffer, "SD Card Free Space: \t%lu\n", free_space);
-  send_uart(buffer);
 
-  /********************** File creation **********************/
+  // Check whether sub-directories exist. If not create it
+  if (f_stat("MotorController", &fno) == FR_NO_FILE)
+    fresult = f_mkdir("MotorController");
 
+  if (f_stat("MotorDriver", &fno) == FR_NO_FILE)
+    fresult = f_mkdir("MotorDriver");
 
-  /* Open file to write / create a file if it doesn't exists */
-  fresult = f_open(&fil, "telemetry2.txt", FA_OPEN_ALWAYS | FA_WRITE);
-
-  /* Write data and close file*/
-  fresult = f_lseek(&fil, f_size(&fil));
-
-  fresult = f_puts("Telemetry System for Hydrogen Vehicle\n Test data 1\n", &fil);
-  fresult = f_puts("Received data from main line\n Test data 2\n", &fil);
-
-  fresult = f_close(&fil);
-
-  send_uart("Telemetry_test_file.txt created and the data is written...\n");
-
-  fresult = f_mount(NULL, "", 1);
-  if (fresult == FR_OK)
-    send_uart ("SD CARD UNMOUNTED successfully...\n");
-  /* USER CODE END 2 */
-
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
+    MainLine_FrameHandler();
+    WriteDataToCard();
   }
-  /* USER CODE END 3 */
+}
+
+uint8_t RX_Byte (void)
+{
+  uint8_t data = 0;
+  while (HAL_UART_GetState(&huart3) != HAL_UART_STATE_READY);
+  HAL_UART_Receive(&huart3, &data, 1, 2000);
+  return data;
+}
+
+void MainLine_FrameHandler (void)
+{
+  // First received byte is an address
+  if (RX_Byte() == 0x01) {
+    // Read CMD
+    ML_Frame.Command = RX_Byte();
+    // Read payload lenght
+    ML_Frame.Length = RX_Byte();
+    // Initialize array
+    ML_Frame.Payload = calloc(ML_Frame.Length, sizeof(ML_Frame.Payload));
+
+    for (int i = 0; i < ML_Frame.Length; i++)
+      ML_Frame.Payload[i] = RX_Byte();
+
+    // Read CRC byte
+    RX_Byte();
+  }
+}
+
+void WriteDataToCard (void)
+{
+  // Data received from MotorController
+  if (ML_Frame.Command == 0x01) {
+    for (int i = 0; i < ML_Frame.Length; i++) {
+      switch (i)
+      {
+        case 1:
+          f_open(&fil, "MotorController/buttonA.txt", FA_OPEN_ALWAYS|FA_WRITE);
+          break;
+        case 2:
+          f_open(&fil, "MotorController/buttonB.txt", FA_OPEN_ALWAYS|FA_WRITE);
+          break;
+        case 3:
+          f_open(&fil, "MotorController/buttonC.txt", FA_OPEN_ALWAYS|FA_WRITE);
+          break;
+        case 4:
+          f_open(&fil, "MotorController/buttonD.txt", FA_OPEN_ALWAYS|FA_WRITE);
+          break;
+        default:
+          continue;
+          break;
+      }
+      f_lseek(&fil, f_size(&fil));
+      f_puts(ML_Frame.Payload[i]+"\n", &fil);
+      f_close(&fil);
+    }
+  }
+  // Data received from MotorDriver
+  else if (ML_Frame.Command == 0x02) {
+    for (int i = 0; i < ML_Frame.Length; i++) {
+      switch (i)
+      {
+        case 1:
+          f_open(&fil, "MotorDriver/voltage.txt", FA_OPEN_ALWAYS|FA_WRITE);
+          break;
+        case 2:
+          f_open(&fil, "MotorDriver/current.txt", FA_OPEN_ALWAYS|FA_WRITE);
+          break;
+        case 3:
+          f_open(&fil, "MotorDriver/rpm.txt", FA_OPEN_ALWAYS|FA_WRITE);
+          break;
+        default:
+          continue;
+          break;
+      }
+      f_lseek(&fil, f_size(&fil));
+      f_puts(ML_Frame.Payload[i]+"\n", &fil);
+      f_close(&fil);
+    }
+  }
+  // Clear information about last frame
+  ML_Frame.Command = 0;
+  ML_Frame.Length = 0;
+  free(ML_Frame.Payload);
 }
 
 /**
