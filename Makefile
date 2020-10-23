@@ -52,10 +52,11 @@ Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_pwr.c \
 Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_flash.c \
 Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_flash_ex.c \
 Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_exti.c \
+Drivers/Controllers/led_controller.c \
+Drivers/Controllers/spi_controller.c \
 Src/system_stm32f1xx.c \
 Src/user_diskio.c \
 Src/fatfs.c \
-Src/spi_controller.c \
 Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_spi.c \
 Middlewares/Third_Party/FatFs/src/diskio.c \
 Middlewares/Third_Party/FatFs/src/ff.c \
@@ -123,6 +124,7 @@ C_INCLUDES =  \
 -IDrivers/STM32F1xx_HAL_Driver/Inc \
 -IDrivers/STM32F1xx_HAL_Driver/Inc/Legacy \
 -IDrivers/CMSIS/Device/ST/STM32F1xx/Include \
+-IDrivers/Controllers \
 -IDrivers/CMSIS/Include \
 -IDrivers/CMSIS/Include \
 -IMiddlewares/Third_Party/FatFs/src

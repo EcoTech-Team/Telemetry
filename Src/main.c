@@ -20,11 +20,15 @@
 #include "fatfs.h"
 #include "spi_controller.h"
 #include "led_controller.h"
+//#include "msg_lib.h"
 #include <string.h>
 #include <stdio.h>
 
 
 /* Private variables ---------------------------------------------------------*/
+#define ML_TIMEOUT        0xA5
+#define SD_CARD_FULL      0xA6
+
 struct
 {
   // uint8_t addr; // For now only one address exist (0x01)
@@ -40,8 +44,8 @@ UART_HandleTypeDef huart3;
 FATFS fs; // file system
 FIL fil; // file
 FILINFO fno; // file info
-FRESULT fresult; // to store the result
-uint8_t buffer[1024]; // to store data
+uint8_t res = FR_NOT_READY; // to store the result
+//MSG_Message msg;  // received message
 
 /* capacity related variables */
 /* check capasity of the card */
@@ -50,27 +54,11 @@ DWORD fre_clust;
 uint32_t total, free_space;
 
 /* To send the data to the uart */
-void send_uart (char *string)
+/*void send_uart (char *string)
 {
   uint8_t len = strlen(string);
   HAL_UART_Transmit(&huart3, (uint8_t *) string, len, 2000); // transmit in blocking mode
-}
-
-/* Return size of data in the buffer */
-int bufsize (uint8_t *buf)
-{
-  int i=0;
-  while (*buf++ != '\0') i++;
-  return i;
-}
-
-void bufclear (void)
-{
-  for (int i = 0; i < ML_Frame.Length; i++)
-  {
-      ML_Frame.Payload[i] = '\0';
-  }
-}
+}*/
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -96,54 +84,47 @@ int main(void)
   MX_SPI1_Init();
   MX_FATFS_Init();
   MX_USART3_UART_Init();
+  //MSG_CrcInit();
 
   /* Configure the system clock */
   SystemClock_Config();
 
+  //MSG_Message *msg;
   HAL_Delay(500);
-  /* Mount SD Card */
-  fresult = f_mount(&fs, "", 1);
-  if (fresult != FR_OK)
-    send_uart("Error: can't mount SD Card...\n");
-  else
-    send_uart("SD Card mounted successfully...\n");
-
-/******************* Card capacity detals *******************/
-
-  /* Check free space */
-  fresult = f_getfree("", &fre_clust, &pfs);
-
-  if (fresult == FR_OK)
-    send_uart("f_getfree FR_OK...\n");
-  else if (fresult == FR_NOT_ENABLED)
-    send_uart("f_getfree FR_NOT_ENABLED...\n");
-  else if (fresult == FR_NOT_READY)
-    send_uart("f_getfree FR_NOT_READY...\n");
-  else if (fresult == FR_NO_FILESYSTEM)
-    send_uart("f_getfree FR_NO_FILESYSTEM...\n");
-  else if (fresult == FR_DISK_ERR)
-    send_uart("f_getfree FR_DISK_ERR...\n");
-  else if (fresult == FR_INVALID_DRIVE)
-    send_uart("f_getfree FR_INVALID_DRIVE...\n");
-  else if (fresult == FR_INT_ERR)
-    send_uart("f_getfree FR_INT_ERR...\n");
-  else if (fresult == FR_TIMEOUT)
-    send_uart("f_getfree FR_TIMEOUT...\n");
-
-  total = (uint32_t)((pfs->n_fatent - 2) * pfs->csize * 0.5);
-  free_space = (uint32_t)(fre_clust * pfs->csize * 0.5);
-
-  // Check whether sub-directories exist. If not create it
-  if (f_stat("MotorController", &fno) == FR_NO_FILE)
-    fresult = f_mkdir("MotorController");
-
-  if (f_stat("MotorDriver", &fno) == FR_NO_FILE)
-    fresult = f_mkdir("MotorDriver");
 
   while (1)
   {
-    MainLine_FrameHandler();
-    WriteDataToCard();
+    if (res == FR_NOT_READY) {
+      // Mount and initialize card
+      res = f_mount(&fs, "", 1);
+      if (res != FR_OK) {
+        Error_Handler();
+        continue;
+      }
+
+      f_getfree("", &fre_clust, &pfs);
+      total = (uint32_t)((pfs->n_fatent - 2) * pfs->csize * 0.5);
+      free_space = (uint32_t)(fre_clust * pfs->csize * 0.5);
+      if (free_space == 0 && total != 0) {
+        res = SD_CARD_FULL;
+        Error_Handler();
+        continue;
+      }
+
+      // Check whether sub-directories exist. If not create it
+      if (f_stat("MotorController", &fno) == FR_NO_FILE) {
+        res = f_mkdir("MotorController");
+        Error_Handler();
+      }
+      if (f_stat("MotorDriver", &fno) == FR_NO_FILE) {
+        res = f_mkdir("MotorDriver");
+        Error_Handler();
+      }
+    }
+    else if (res == FR_OK) {
+      MainLine_FrameHandler();
+      WriteDataToCard();
+    }
   }
 }
 
@@ -151,14 +132,16 @@ uint8_t RX_Byte (void)
 {
   uint8_t data = 0;
   while (HAL_UART_GetState(&huart3) != HAL_UART_STATE_READY);
-  HAL_UART_Receive(&huart3, &data, 1, 2000);
+  if (HAL_UART_Receive(&huart3, &data, 1, 2000) == HAL_TIMEOUT)
+    res = ML_TIMEOUT;
   return data;
 }
 
 void MainLine_FrameHandler (void)
 {
   // First received byte is an address
-  if (RX_Byte() == 0x01) {
+  uint8_t addr = RX_Byte();
+  if (addr == 0x01) {
     // Read CMD
     ML_Frame.Command = RX_Byte();
     // Read payload lenght
@@ -172,13 +155,14 @@ void MainLine_FrameHandler (void)
     // Read CRC byte
     RX_Byte();
   }
+  Error_Handler();
 }
 
 void WriteDataToCard (void)
 {
   // Data received from MotorController
   if (ML_Frame.Command == 0x01) {
-    for (int i = 0; i < ML_Frame.Length; i++) {
+    for (int i = 1; i <= ML_Frame.Length; i++) {
       switch (i)
       {
         case 1:
@@ -194,17 +178,18 @@ void WriteDataToCard (void)
           f_open(&fil, "MotorController/buttonD.txt", FA_OPEN_ALWAYS|FA_WRITE);
           break;
         default:
-          continue;
+          f_open(&fil, "MotorController/default.txt", FA_OPEN_ALWAYS|FA_WRITE);
           break;
       }
       f_lseek(&fil, f_size(&fil));
-      f_puts(ML_Frame.Payload[i]+"\n", &fil);
+      res = f_putc(ML_Frame.Payload[i-1], &fil);
+      f_puts("\n", &fil);
       f_close(&fil);
     }
   }
   // Data received from MotorDriver
   else if (ML_Frame.Command == 0x02) {
-    for (int i = 0; i < ML_Frame.Length; i++) {
+    for (int i = 1; i <= ML_Frame.Length; i++) {
       switch (i)
       {
         case 1:
@@ -217,11 +202,12 @@ void WriteDataToCard (void)
           f_open(&fil, "MotorDriver/rpm.txt", FA_OPEN_ALWAYS|FA_WRITE);
           break;
         default:
-          continue;
+          f_open(&fil, "MotorDriver/default.txt", FA_OPEN_ALWAYS|FA_WRITE);
           break;
       }
       f_lseek(&fil, f_size(&fil));
-      f_puts(ML_Frame.Payload[i]+"\n", &fil);
+      res = f_putc(ML_Frame.Payload[i-1], &fil);
+      f_puts("\n", &fil);
       f_close(&fil);
     }
   }
@@ -355,10 +341,6 @@ static void MX_GPIO_Init(void)
 
 }
 
-/* USER CODE BEGIN 4 */
-
-/* USER CODE END 4 */
-
 /**
   * @brief  This function is executed in case of error occurrence.
   * @retval None
@@ -367,25 +349,30 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
-
+  switch (res)
+  {
+  case FR_OK:
+    LED_DisplayStatus(0);
+    break;
+  case FR_NOT_READY:
+    LED_DisplayStatus(SD_CARD_NOT_EXIST);
+    break;
+  case FR_NOT_ENABLED:
+    LED_DisplayStatus(SD_CARD_NOT_MOUNTED);
+    break;
+  case FR_DISK_ERR:
+    LED_DisplayStatus(SD_CARD_READ_WRITE_ERR);
+    break;
+  case SD_CARD_FULL:
+    LED_DisplayStatus(SD_CARD_NO_FREE_SPACE);
+    break;
+  case ML_TIMEOUT:
+    LED_DisplayStatus(ML_READ_ERR);
+    break;
+  default:
+    LED_DisplayStatus(UNDEFINED_ERR);
+    break;
+  }
   /* USER CODE END Error_Handler_Debug */
 }
-
-#ifdef  USE_FULL_ASSERT
-/**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
-void assert_failed(uint8_t *file, uint32_t line)
-{
-  /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
-}
-#endif /* USE_FULL_ASSERT */
-
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
