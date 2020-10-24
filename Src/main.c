@@ -122,40 +122,19 @@ int main(void)
       }
     }
     else if (res == FR_OK) {
-      MainLine_FrameHandler();
       WriteDataToCard();
     }
   }
 }
 
-uint8_t RX_Byte (void)
+void MSG_Received(uint8_t *buff, uint8_t len)
 {
-  uint8_t data = 0;
-  while (HAL_UART_GetState(&huart3) != HAL_UART_STATE_READY);
-  if (HAL_UART_Receive(&huart3, &data, 1, 2000) == HAL_TIMEOUT)
-    res = ML_TIMEOUT;
-  return data;
-}
-
-void MainLine_FrameHandler (void)
-{
-  // First received byte is an address
-  uint8_t addr = RX_Byte();
-  if (addr == 0x01) {
-    // Read CMD
-    ML_Frame.Command = RX_Byte();
-    // Read payload lenght
-    ML_Frame.Length = RX_Byte();
-    // Initialize array
-    ML_Frame.Payload = calloc(ML_Frame.Length, sizeof(ML_Frame.Payload));
-
-    for (int i = 0; i < ML_Frame.Length; i++)
-      ML_Frame.Payload[i] = RX_Byte();
-
-    // Read CRC byte
-    RX_Byte();
-  }
-  Error_Handler();
+  // Receive cut frame [without addr and crc]
+  ML_Frame.Command = buff[0]; // 2nd byte is CMD
+  ML_Frame.Length = buff[1];  // 3rd byte is payload length
+  ML_Frame.Payload = calloc(ML_Frame.Length, sizeof(ML_Frame.Payload));
+  for (int byte = 2; byte < len; byte ++)
+    ML_Frame.Payload[byte-2] = buff[byte];
 }
 
 void WriteDataToCard (void)
@@ -289,7 +268,7 @@ static void MX_SPI1_Init(void)
 static void MX_USART3_UART_Init(void)
 {
   huart3.Instance = USART3;
-  huart3.Init.BaudRate = 115200;
+  huart3.Init.BaudRate = 38400;
   huart3.Init.WordLength = UART_WORDLENGTH_8B;
   huart3.Init.StopBits = UART_STOPBITS_1;
   huart3.Init.Parity = UART_PARITY_NONE;
