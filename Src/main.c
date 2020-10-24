@@ -136,6 +136,9 @@ void MSG_Received(uint8_t *buff, uint8_t len)
   ML_Frame.Payload = calloc(ML_Frame.Length, sizeof(ML_Frame.Payload));
   for (int byte = 2; byte < len; byte ++)
     ML_Frame.Payload[byte-2] = buff[byte];
+
+  // Only for debug purpose
+  LED_DisplayStatus(0x07);
 }
 
 void WriteDataToCard (void)

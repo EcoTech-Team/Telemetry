@@ -187,8 +187,8 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
     HAL_NVIC_SetPriority(USART3_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(USART3_IRQn);
   /* USER CODE BEGIN USART3_MspInit 1 */
-    //huart->Instance->CR1 |= USART_CR1_UE | USART_CR1_RXNEIE | USART_CR1_IDLEIE | USART_CR1_RE | USART_CR1_PEIE;
-    //huart->Instance->CR3 |= USART_CR3_EIE;
+    huart->Instance->CR1 |= USART_CR1_UE | USART_CR1_RXNEIE | USART_CR1_IDLEIE | USART_CR1_RE | USART_CR1_PEIE;
+    huart->Instance->CR3 |= USART_CR3_EIE;
   /* USER CODE END USART3_MspInit 1 */
   }
 
