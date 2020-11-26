@@ -1,5 +1,5 @@
 /*
- * led_driver.c
+ * led_controller.c
  */
 #include "led_controller.h"
 
