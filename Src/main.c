@@ -20,7 +20,8 @@
 #include "fatfs.h"
 #include "spi_controller.h"
 #include "led_controller.h"
-//#include "msg_lib.h"
+#include "msg_lib.h"
+#include "bus_controller.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,13 +30,14 @@
 /* Private variables ---------------------------------------------------------*/
 #define ML_TIMEOUT        0xA5
 #define SD_CARD_FULL      0xA6
+#define PAYLOAD_MAX_LEN   10
 
 struct
 {
   // uint8_t addr; // For now only one address exist (0x01)
   uint8_t Command;
   uint8_t Length;
-  uint8_t *Payload;
+  uint8_t Payload[PAYLOAD_MAX_LEN];
 } ML_Frame;
 
 
@@ -66,8 +68,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART3_UART_Init(void);
-uint8_t RX_Byte (void);
-void MainLine_FrameHandler (void);
+void MSG_Received(uint8_t *, uint8_t);
 void WriteDataToCard (void);
 
 
@@ -85,7 +86,7 @@ int main(void)
   MX_SPI1_Init();
   MX_FATFS_Init();
   MX_USART3_UART_Init();
-  //MSG_CrcInit();
+  MSG_CrcInit();
 
   /* Configure the system clock */
   SystemClock_Config();
