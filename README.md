@@ -19,3 +19,15 @@ Linki do powyżej wymienionych elementów znajduje się w opisie wtyczki
 
 Do tego celu wykorzystano `STM32 CubeMX`. [Tutaj](https://www.youtube.com/watch?v=szMGedsp9jc)
 krótki tutorial jak założyć projekt.
+
+## Data analysis
+
+### Prerequisites & environment setup
+
+- `virtualenv` package - if not installed run: `pip3 install virtualenv`
+- run command show below:
+    ```bash
+    $ virtualenv -p /usr/bin/python3 venv
+    $ source venv/bin/activate
+    $ pip install -r requirements.txt
+    ```

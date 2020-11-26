@@ -3,6 +3,7 @@
  */
 
 #include "msg_lib.h"
+#include "led_controller.h"
 
 static uint8_t  _CrcTable[256];
 
@@ -50,15 +51,31 @@ bool MSG_ValidateCrc(uint8_t *data, uint8_t len)
 
 void BUS_Received(uint8_t *buff, uint8_t len)
 {
-    if(buff[0]==ADDRESS && MSG_ValidateCrc(&buff[0],buff[2]+4))
+    if(buff[0]==ADDRESS && MSG_ValidateCrc(&buff[0],buff[2]+4)) {
         MSG_Received(&buff[1],len-2);
+    }
+    //MSG_Received(&buff[1],len-2);
 }
 
-void Clear_Message (MSG_Message *msg)
+uint8_t MSG_Pack(MSG_Command cmd, uint8_t *data, uint8_t len, uint8_t *buff)
 {
-    msg->Address = 0;
-    msg->Command = 0;
-    msg->Length = 0;
-    msg->CRC = 0;
-    free(msg->Payload);
+    MSG_Message *msg = (MSG_Message *) buff;
+    //! Set address and command
+    msg->Address = ADDRESS;
+    msg->Command = cmd;
+    msg->Length = len;
+
+    //! Copy passed data to buffer
+    for(uint8_t i=0; i<len; i++)
+        msg->Payload[i] =data[i];
+    //! Append CRC
+    msg->Payload[len] = MSG_CalculateCrc(buff, len + 3);
+    //! Return size of packed message
+    return len + 4;
+}
+
+uint8_t MSG_PackDriverState(uint8_t volt, uint8_t amp, uint8_t rpm, uint8_t *buff)
+{
+    uint8_t data[3] = {volt, amp, rpm};
+    return MSG_Pack(MSG_DRV_STATE, data, 3, buff);
 }

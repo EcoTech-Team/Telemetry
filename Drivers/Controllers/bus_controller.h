@@ -17,6 +17,7 @@
 void MainLine_IRQHandler(UART_HandleTypeDef *);
 //! Function called after receive. Has to be implemented in other file
 void __attribute__((weak)) BUS_Received(uint8_t *buff, uint8_t len);
-
+//! Send passed buff to the bus
+void BUS_Send(UART_HandleTypeDef *huart, uint8_t *buff, uint8_t len);
 
 #endif /* BUS_CONTROLLER_H_ */

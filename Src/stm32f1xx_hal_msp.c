@@ -32,7 +32,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN Define */
- 
+
 /* USER CODE END Define */
 
 /* Private macro -------------------------------------------------------------*/
@@ -187,8 +187,9 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
     HAL_NVIC_SetPriority(USART3_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(USART3_IRQn);
   /* USER CODE BEGIN USART3_MspInit 1 */
-    huart->Instance->CR1 |= USART_CR1_UE | USART_CR1_RXNEIE | USART_CR1_IDLEIE | USART_CR1_RE | USART_CR1_PEIE;
-    huart->Instance->CR3 |= USART_CR3_EIE;
+    __HAL_UART_ENABLE_IT(huart, UART_IT_IDLE);
+    __HAL_UART_ENABLE_IT(huart, UART_IT_RXNE);
+    __HAL_UART_ENABLE_IT(huart, UART_IT_ERR);
   /* USER CODE END USART3_MspInit 1 */
   }
 

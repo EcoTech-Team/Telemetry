@@ -20,7 +20,8 @@
 #include "fatfs.h"
 #include "spi_controller.h"
 #include "led_controller.h"
-//#include "msg_lib.h"
+#include "bus_controller.h"
+#include "msg_lib.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,13 +30,14 @@
 /* Private variables ---------------------------------------------------------*/
 #define ML_TIMEOUT        0xA5
 #define SD_CARD_FULL      0xA6
+#define PAYLOAD_MAX_LEN   10
 
 struct
 {
   // uint8_t addr; // For now only one address exist (0x01)
   uint8_t Command;
   uint8_t Length;
-  uint8_t *Payload;
+  uint8_t Payload[PAYLOAD_MAX_LEN];
 } ML_Frame;
 
 
@@ -53,24 +55,22 @@ uint8_t res = FR_NOT_READY; // to store the result
 FATFS *pfs;
 DWORD fre_clust;
 uint32_t total, free_space;
-
-/* To send the data to the uart */
-/*void send_uart (char *string)
-{
-  uint8_t len = strlen(string);
-  HAL_UART_Transmit(&huart3, (uint8_t *) string, len, 2000); // transmit in blocking mode
-}*/
+uint8_t messageBuffer[7];
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART3_UART_Init(void);
-uint8_t RX_Byte (void);
-void MainLine_FrameHandler (void);
 void WriteDataToCard (void);
+void MSG_Received(uint8_t *, uint8_t);
 
-
+/* To send the data to the uart */
+void send_uart (char *string)
+{
+  uint8_t len = strlen(string);
+  HAL_UART_Transmit(&huart3, (uint8_t *) string, len, 2000); // transmit in blocking mode
+}
 /**
   * @brief  The application entry point.
   * @retval int
@@ -85,16 +85,19 @@ int main(void)
   MX_SPI1_Init();
   MX_FATFS_Init();
   MX_USART3_UART_Init();
-  //MSG_CrcInit();
+  MSG_CrcInit();
 
   /* Configure the system clock */
   SystemClock_Config();
-
-  //MSG_Message *msg;
   HAL_Delay(500);
 
   while (1)
   {
+    HAL_Delay(90);
+    //uint8_t len = MSG_PackDriverState(4 /*volt*/, 2 /*amp*/, 0 /*rpm*/, messageBuffer);
+	  //BUS_Send(&huart3, messageBuffer, len);
+    send_uart("1111112121212121");
+
     if (res == FR_NOT_READY) {
       // Mount and initialize card
       res = f_mount(&fs, "", 1);
@@ -124,8 +127,14 @@ int main(void)
     }
     else if (res == FR_OK) {
       WriteDataToCard();
+      Error_Handler();
     }
   }
+}
+
+void MSG_Payload_Clear (void) {
+  for (int i = 0; i < PAYLOAD_MAX_LEN; i++)
+    ML_Frame.Payload[i] = 0;
 }
 
 void MSG_Received(uint8_t *buff, uint8_t len)
@@ -133,41 +142,43 @@ void MSG_Received(uint8_t *buff, uint8_t len)
   // Receive cut frame [without addr and crc]
   ML_Frame.Command = buff[0]; // 2nd byte is CMD
   ML_Frame.Length = buff[1];  // 3rd byte is payload length
-  ML_Frame.Payload = calloc(ML_Frame.Length, sizeof(ML_Frame.Payload));
-  for (int byte = 2; byte < len; byte ++)
-    ML_Frame.Payload[byte-2] = buff[byte];
 
-  // Only for debug purpose
-  LED_DisplayStatus(0x07);
+  for (int byte = 2; byte < ML_Frame.Length; byte ++) {
+    if (!(byte > PAYLOAD_MAX_LEN))
+      ML_Frame.Payload[byte-2] = buff[byte];
+  }
 }
 
 void WriteDataToCard (void)
 {
+  uint8_t data = 0;
   // Data received from MotorController
   if (ML_Frame.Command == 0x01) {
     for (int i = 1; i <= ML_Frame.Length; i++) {
       switch (i)
       {
         case 1:
-          f_open(&fil, "MotorController/buttonA.txt", FA_OPEN_ALWAYS|FA_WRITE);
+          res = f_open(&fil, "MotorController/buttonA.txt", FA_OPEN_ALWAYS|FA_WRITE);
           break;
         case 2:
-          f_open(&fil, "MotorController/buttonB.txt", FA_OPEN_ALWAYS|FA_WRITE);
+          res = f_open(&fil, "MotorController/buttonB.txt", FA_OPEN_ALWAYS|FA_WRITE);
           break;
         case 3:
-          f_open(&fil, "MotorController/buttonC.txt", FA_OPEN_ALWAYS|FA_WRITE);
+          res = f_open(&fil, "MotorController/buttonC.txt", FA_OPEN_ALWAYS|FA_WRITE);
           break;
         case 4:
-          f_open(&fil, "MotorController/buttonD.txt", FA_OPEN_ALWAYS|FA_WRITE);
+          res = f_open(&fil, "MotorController/buttonD.txt", FA_OPEN_ALWAYS|FA_WRITE);
           break;
         default:
-          f_open(&fil, "MotorController/default.txt", FA_OPEN_ALWAYS|FA_WRITE);
+          res = f_open(&fil, "MotorController/dummy.txt", FA_OPEN_ALWAYS|FA_WRITE);
           break;
       }
+      data = ML_Frame.Payload[i-1] + 48;
       f_lseek(&fil, f_size(&fil));
-      res = f_putc(ML_Frame.Payload[i-1], &fil);
-      f_puts("\n", &fil);
+      if (f_putc(data, &fil) == -1) res = FR_DISK_ERR;
+      if (f_puts("\n", &fil) == -1) res = FR_DISK_ERR;
       f_close(&fil);
+      data = 0;
     }
   }
   // Data received from MotorDriver
@@ -185,19 +196,20 @@ void WriteDataToCard (void)
           f_open(&fil, "MotorDriver/rpm.txt", FA_OPEN_ALWAYS|FA_WRITE);
           break;
         default:
-          f_open(&fil, "MotorDriver/default.txt", FA_OPEN_ALWAYS|FA_WRITE);
+          f_open(&fil, "MotorDriver/dummy.txt", FA_OPEN_ALWAYS|FA_WRITE);
           break;
       }
+      data = ML_Frame.Payload[i-1] + 30;
       f_lseek(&fil, f_size(&fil));
-      res = f_putc(ML_Frame.Payload[i-1], &fil);
-      f_puts("\n", &fil);
+      if (f_putc(data, &fil) == -1) res = FR_DISK_ERR;
+      if (f_puts("\n", &fil) == -1) res = FR_DISK_ERR;
       f_close(&fil);
     }
   }
   // Clear information about last frame
-  ML_Frame.Command = 0;
-  ML_Frame.Length = 0;
-  free(ML_Frame.Payload);
+  //ML_Frame.Command = 0;
+  //ML_Frame.Length = 0;
+  //MSG_Payload_Clear();
 }
 
 /**
@@ -245,7 +257,6 @@ void SystemClock_Config(void)
   */
 static void MX_SPI1_Init(void)
 {
-  /* SPI1 parameter configuration*/
   hspi1.Instance = SPI1;
   hspi1.Init.Mode = SPI_MODE_MASTER;
   hspi1.Init.Direction = SPI_DIRECTION_2LINES;
@@ -272,7 +283,7 @@ static void MX_SPI1_Init(void)
 static void MX_USART3_UART_Init(void)
 {
   huart3.Instance = USART3;
-  huart3.Init.BaudRate = 38400;
+  huart3.Init.BaudRate = 34800;//17050;
   huart3.Init.WordLength = UART_WORDLENGTH_8B;
   huart3.Init.StopBits = UART_STOPBITS_1;
   huart3.Init.Parity = UART_PARITY_NONE;
@@ -319,7 +330,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : SW3_Pin */
   GPIO_InitStruct.Pin = SW3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(SW3_GPIO_Port, &GPIO_InitStruct);
 
 }
