@@ -53,12 +53,3 @@ void BUS_Received(uint8_t *buff, uint8_t len)
     if(buff[0]==ADDRESS && MSG_ValidateCrc(&buff[0],buff[2]+4))
         MSG_Received(&buff[1],len-2);
 }
-
-void Clear_Message (MSG_Message *msg)
-{
-    msg->Address = 0;
-    msg->Command = 0;
-    msg->Length = 0;
-    msg->CRC = 0;
-    free(msg->Payload);
-}
