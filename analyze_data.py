@@ -48,14 +48,14 @@ CurrF.close()
 RpmF.close()
 VoltF.close()
 
-numElem = len(data_list[6])
+x = []
+tw = 7 # time window
 space = 10 #10us between measure points
-maxTime = numElem * 10
-tw = 7 # time window - 1ms
 
-# x axis represents time
-maxTime = maxTime/1000 # convert us to ms
-x = np.arange(0, maxTime, space/1000)
+for elem in range(0, 7, 1):
+    maxTime = len(data_list[elem])/100 # scale to ms
+    x_range = np.arange(0, maxTime, space/1000)
+    x.append(x_range)
 
 # define three y axis depend on receive data
 y0 = data_list[0]
@@ -75,13 +75,13 @@ axs[0].axis([0, tw, -0.1,1.1])
 axs[1].axis([0, tw, -0.1+min(y4),0.1+max(y4)])
 axs[2].axis([0, tw, -0.1+min(y5),0.1+max(y5)])
 axs[3].axis([0, tw, -0.1+min(y6),0.1+max(y6)])
-axs[0].plot(x, y0, label='A')
-axs[0].plot(x, y1, label='B')
-axs[0].plot(x, y2, label='C')
-axs[0].plot(x, y3, label='D')
-axs[1].plot(x, y4)
-axs[2].plot(x, y5)
-axs[3].plot(x, y6)
+axs[0].plot(x[0], y0, label='A')
+axs[0].plot(x[1], y1, label='B')
+axs[0].plot(x[2], y2, label='C')
+axs[0].plot(x[3], y3, label='D')
+axs[1].plot(x[4], y4)
+axs[2].plot(x[5], y5)
+axs[3].plot(x[6], y6)
 
 axs[0].yaxis.set_ticks(np.arange(0, 1.1, 1.0))
 axs[0].legend(loc='upper left', fontsize='x-small')
