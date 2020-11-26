@@ -134,6 +134,7 @@ void MSG_Received(uint8_t *buff, uint8_t len)
 
 void WriteDataToCard (void)
 {
+  TCHAR d_buff[3] = {0, 0, 0}; // values from 0 to 256
   // Data received from MotorController
   if (ML_Frame.Command == 0x01) {
     for (int i = 1; i <= ML_Frame.Length; i++) {
@@ -155,10 +156,16 @@ void WriteDataToCard (void)
           f_open(&fil, "MotorController/default.txt", FA_OPEN_ALWAYS|FA_WRITE);
           break;
       }
+      sprintf(d_buff, "%d", ML_Frame.Payload[i-1]);
       f_lseek(&fil, f_size(&fil));
-      res = f_putc(ML_Frame.Payload[i-1], &fil);
-      f_puts("\n", &fil);
+      if (f_puts(d_buff, &fil) == -1) res = FR_DISK_ERR;
+      if (f_puts("\n", &fil) == -1) res = FR_DISK_ERR;
       f_close(&fil);
+
+      // clear buffers
+      d_buff[0] = 0;
+      d_buff[1] = 0;
+      d_buff[2] = 0;
     }
   }
   // Data received from MotorDriver
@@ -265,7 +272,7 @@ static void MX_SPI1_Init(void)
 static void MX_USART3_UART_Init(void)
 {
   huart3.Instance = USART3;
-  huart3.Init.BaudRate = 38400;
+  huart3.Init.BaudRate = 17050;
   huart3.Init.WordLength = UART_WORDLENGTH_8B;
   huart3.Init.StopBits = UART_STOPBITS_1;
   huart3.Init.Parity = UART_PARITY_NONE;
