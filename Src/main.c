@@ -56,13 +56,6 @@ FATFS *pfs;
 DWORD fre_clust;
 uint32_t total, free_space;
 
-/* To send the data to the uart */
-/*void send_uart (char *string)
-{
-  uint8_t len = strlen(string);
-  HAL_UART_Transmit(&huart3, (uint8_t *) string, len, 2000); // transmit in blocking mode
-}*/
-
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
@@ -90,9 +83,6 @@ int main(void)
 
   /* Configure the system clock */
   SystemClock_Config();
-
-  //MSG_Message *msg;
-  HAL_Delay(500);
 
   while (1)
   {
@@ -125,6 +115,7 @@ int main(void)
     }
     else if (res == FR_OK) {
       WriteDataToCard();
+      Error_Handler();
     }
   }
 }
@@ -134,12 +125,11 @@ void MSG_Received(uint8_t *buff, uint8_t len)
   // Receive cut frame [without addr and crc]
   ML_Frame.Command = buff[0]; // 2nd byte is CMD
   ML_Frame.Length = buff[1];  // 3rd byte is payload length
-  ML_Frame.Payload = calloc(ML_Frame.Length, sizeof(ML_Frame.Payload));
-  for (int byte = 2; byte < len; byte ++)
-    ML_Frame.Payload[byte-2] = buff[byte];
 
-  // Only for debug purpose
-  LED_DisplayStatus(0x07);
+  for (int byte = 0; byte < ML_Frame.Length; byte ++) {
+    if (!(byte > PAYLOAD_MAX_LEN))
+      ML_Frame.Payload[byte] = buff[byte+2];
+  }
 }
 
 void WriteDataToCard (void)
@@ -189,16 +179,18 @@ void WriteDataToCard (void)
           f_open(&fil, "MotorDriver/default.txt", FA_OPEN_ALWAYS|FA_WRITE);
           break;
       }
+      sprintf(d_buff, "%d", ML_Frame.Payload[i-1]);
       f_lseek(&fil, f_size(&fil));
-      res = f_putc(ML_Frame.Payload[i-1], &fil);
-      f_puts("\n", &fil);
+      if (f_puts(d_buff, &fil) == -1) res = FR_DISK_ERR;
+      if (f_puts("\n", &fil) == -1) res = FR_DISK_ERR;
       f_close(&fil);
+
+      // clear buffers
+      d_buff[0] = 0;
+      d_buff[1] = 0;
+      d_buff[2] = 0;
     }
   }
-  // Clear information about last frame
-  ML_Frame.Command = 0;
-  ML_Frame.Length = 0;
-  free(ML_Frame.Payload);
 }
 
 /**
