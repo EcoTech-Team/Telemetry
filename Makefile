@@ -55,6 +55,7 @@ Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_exti.c \
 Drivers/Controllers/led_controller.c \
 Drivers/Controllers/spi_controller.c \
 Drivers/Controllers/bus_controller.c \
+Libraries/message/msg_lib.c \
 Src/system_stm32f1xx.c \
 Src/user_diskio.c \
 Src/fatfs.c \
@@ -128,6 +129,7 @@ C_INCLUDES =  \
 -IDrivers/Controllers \
 -IDrivers/CMSIS/Include \
 -IDrivers/CMSIS/Include \
+-ILibraries/message \
 -IMiddlewares/Third_Party/FatFs/src
 
 
