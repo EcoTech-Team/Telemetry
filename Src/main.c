@@ -30,7 +30,7 @@
 /* Private variables ---------------------------------------------------------*/
 #define ML_TIMEOUT        0xA5
 #define SD_CARD_FULL      0xA6
-#define PAYLOAD_MAX_LEN   20
+#define PAYLOAD_MAX_LEN   100
 #define MOTOR_CONTROLLER  0x01
 #define MOTOR_DRIVER      0x02
 
@@ -58,6 +58,13 @@ uint8_t res = FR_NOT_READY; // to store the result
 FATFS *pfs;
 DWORD fre_clust;
 uint32_t total, free_space;
+
+static uint8_t MC_Payload[PAYLOAD_MAX_LEN]; // MotorController data
+static uint8_t MD_Payload[PAYLOAD_MAX_LEN]; // MotorDriver data
+static uint8_t mc_received = false;
+static uint8_t md_received = false;
+static uint8_t offset_mc = 0;
+static uint8_t offset_md = 0;
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -224,7 +231,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -247,7 +254,7 @@ static void MX_USART3_UART_Init(void)
   huart3.Init.WordLength = UART_WORDLENGTH_8B;
   huart3.Init.StopBits = UART_STOPBITS_1;
   huart3.Init.Parity = UART_PARITY_NONE;
-  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.Mode = UART_MODE_RX;
   huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart3.Init.OverSampling = UART_OVERSAMPLING_16;
   if (HAL_UART_Init(&huart3) != HAL_OK)
