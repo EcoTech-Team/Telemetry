@@ -117,18 +117,29 @@ int main(void)
   }
 }
 
+// Receive cut frame [without addr and crc]
 void MSG_Received(uint8_t *buff, uint8_t len)
 {
-  // Receive cut frame [without addr and crc]
-  ML_Frame.Command = buff[0]; // 2nd byte is CMD
-  ML_Frame.Length = buff[1];  // 3rd byte is payload length
+  uint8_t cmd, p_len;
+  cmd = buff[0];    // 2nd byte is CMD
+  p_len = buff[1];  // 3rd byte is payload length
 
-  if (ML_Frame.Command == MOTOR_CONTROLLER)
-    for (uint8_t byte = 0; byte < ML_Frame.Length; byte ++)
-      ML_Frame.MC_Payload[byte] = buff[byte+2];
-  else if (ML_Frame.Command == MOTOR_DRIVER)
-    for (uint8_t byte = 0; byte < ML_Frame.Length; byte ++)
-      ML_Frame.MD_Payload[byte] = buff[byte+2];
+  if (cmd == MOTOR_CONTROLLER) {
+    for (uint8_t byte = 0; byte < p_len; byte++)
+      MC_Payload[offset_mc+byte] = buff[byte+2];
+    mc_received = true;
+    offset_mc += 4;
+  }
+  else if (cmd == MOTOR_DRIVER) {
+    for (uint8_t byte = 0; byte < p_len; byte++)
+      MD_Payload[offset_md+byte] = buff[byte+2];
+    md_received = true;
+    offset_md += 4;
+  }
+  if (offset_mc >= PAYLOAD_MAX_LEN)
+    offset_mc = 0;
+  if (offset_md >= PAYLOAD_MAX_LEN)
+    offset_md = 0;
 }
 
 void WriteDataToCard (void)
