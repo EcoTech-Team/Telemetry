@@ -25,19 +25,22 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-
+#include <time.h>
 
 /* Private variables ---------------------------------------------------------*/
 #define ML_TIMEOUT        0xA5
 #define SD_CARD_FULL      0xA6
-#define PAYLOAD_MAX_LEN   10
+#define PAYLOAD_MAX_LEN   20
+#define MOTOR_CONTROLLER  0x01
+#define MOTOR_DRIVER      0x02
 
 struct
 {
   // uint8_t addr; // For now only one address exist (0x01)
   uint8_t Command;
   uint8_t Length;
-  uint8_t Payload[PAYLOAD_MAX_LEN];
+  uint8_t MC_Payload[PAYLOAD_MAX_LEN]; // MotorController data
+  uint8_t MD_Payload[PAYLOAD_MAX_LEN]; // MotorDriver data
 } ML_Frame;
 
 
@@ -45,7 +48,7 @@ SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart3;
 
 FATFS fs; // file system
-FIL fil; // file
+FIL fil; // file object
 FILINFO fno; // file info
 uint8_t res = FR_NOT_READY; // to store the result
 //MSG_Message msg;  // received message
@@ -126,77 +129,45 @@ void MSG_Received(uint8_t *buff, uint8_t len)
   ML_Frame.Command = buff[0]; // 2nd byte is CMD
   ML_Frame.Length = buff[1];  // 3rd byte is payload length
 
-  for (int byte = 0; byte < ML_Frame.Length; byte ++) {
-    if (!(byte > PAYLOAD_MAX_LEN))
-      ML_Frame.Payload[byte] = buff[byte+2];
-  }
+  if (ML_Frame.Command == MOTOR_CONTROLLER)
+    for (uint8_t byte = 0; byte < ML_Frame.Length; byte ++)
+      ML_Frame.MC_Payload[byte] = buff[byte+2];
+  else if (ML_Frame.Command == MOTOR_DRIVER)
+    for (uint8_t byte = 0; byte < ML_Frame.Length; byte ++)
+      ML_Frame.MD_Payload[byte] = buff[byte+2];
 }
 
 void WriteDataToCard (void)
 {
-  TCHAR d_buff[3] = {0, 0, 0}; // values from 0 to 256
+  TCHAR data[18] = {0};
   // Data received from MotorController
-  if (ML_Frame.Command == 0x01) {
-    for (int i = 1; i <= ML_Frame.Length; i++) {
-      switch (i)
-      {
-        case 1:
-          f_open(&fil, "MotorController/buttonA.txt", FA_OPEN_ALWAYS|FA_WRITE);
-          break;
-        case 2:
-          f_open(&fil, "MotorController/buttonB.txt", FA_OPEN_ALWAYS|FA_WRITE);
-          break;
-        case 3:
-          f_open(&fil, "MotorController/buttonC.txt", FA_OPEN_ALWAYS|FA_WRITE);
-          break;
-        case 4:
-          f_open(&fil, "MotorController/buttonD.txt", FA_OPEN_ALWAYS|FA_WRITE);
-          break;
-        default:
-          f_open(&fil, "MotorController/default.txt", FA_OPEN_ALWAYS|FA_WRITE);
-          break;
-      }
-      sprintf(d_buff, "%d", ML_Frame.Payload[i-1]);
-      f_lseek(&fil, f_size(&fil));
-      if (f_puts(d_buff, &fil) == -1) res = FR_DISK_ERR;
-      if (f_puts("\n", &fil) == -1) res = FR_DISK_ERR;
-      f_close(&fil);
+  if (ML_Frame.Command == MOTOR_CONTROLLER) {
+    f_open(&fil, "MotorController/buttons.txt", FA_OPEN_ALWAYS|FA_WRITE);
 
-      // clear buffers
-      d_buff[0] = 0;
-      d_buff[1] = 0;
-      d_buff[2] = 0;
-    }
+    uint8_t buttonA, buttonB, buttonC, buttonD;
+    buttonA = ML_Frame.MC_Payload[0];
+    buttonB = ML_Frame.MC_Payload[1];
+    buttonC = ML_Frame.MC_Payload[2];
+    buttonD = ML_Frame.MC_Payload[3];
+    sprintf(data, "%u|%u|%u|%u\n", buttonA, buttonB, buttonC, buttonD);
+    f_lseek(&fil, f_size(&fil));
+    if (f_puts(data, &fil) == -1) res = FR_DISK_ERR;
+    f_close(&fil);
   }
   // Data received from MotorDriver
-  else if (ML_Frame.Command == 0x02) {
-    for (int i = 1; i <= ML_Frame.Length; i++) {
-      switch (i)
-      {
-        case 1:
-          f_open(&fil, "MotorDriver/voltage.txt", FA_OPEN_ALWAYS|FA_WRITE);
-          break;
-        case 2:
-          f_open(&fil, "MotorDriver/current.txt", FA_OPEN_ALWAYS|FA_WRITE);
-          break;
-        case 3:
-          f_open(&fil, "MotorDriver/rpm.txt", FA_OPEN_ALWAYS|FA_WRITE);
-          break;
-        default:
-          f_open(&fil, "MotorDriver/default.txt", FA_OPEN_ALWAYS|FA_WRITE);
-          break;
-      }
-      sprintf(d_buff, "%d", ML_Frame.Payload[i-1]);
-      f_lseek(&fil, f_size(&fil));
-      if (f_puts(d_buff, &fil) == -1) res = FR_DISK_ERR;
-      if (f_puts("\n", &fil) == -1) res = FR_DISK_ERR;
-      f_close(&fil);
+  else if (ML_Frame.Command == MOTOR_DRIVER) {
+    f_open(&fil, "MotorDriver/data.txt", FA_OPEN_ALWAYS|FA_WRITE);
 
-      // clear buffers
-      d_buff[0] = 0;
-      d_buff[1] = 0;
-      d_buff[2] = 0;
-    }
+    uint8_t vol, amp;
+    uint16_t rpm; // volts, ampere, rpm
+    vol = ML_Frame.MD_Payload[0];
+    amp = ML_Frame.MD_Payload[1];
+    rpm = (uint16_t)(ML_Frame.MD_Payload[2]) << 8; // MSB
+    rpm += (uint16_t)(ML_Frame.MD_Payload[3]);      // LSB
+    sprintf(data, "%u|%u|%u\n", vol, amp, rpm);
+    f_lseek(&fil, f_size(&fil));
+    if (f_puts(data, &fil) == -1) res = FR_DISK_ERR;
+    f_close(&fil);
   }
 }
 
