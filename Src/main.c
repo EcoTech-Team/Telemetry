@@ -102,15 +102,13 @@ int main(void)
         continue;
       }
 
-      // Check whether sub-directories exist. If not create it
-      if (f_stat("MotorController", &fno) == FR_NO_FILE) {
-        res = f_mkdir("MotorController");
-        Error_Handler();
+      res = f_open(&fil, "data_from_ride.txt", FA_CREATE_NEW|FA_WRITE);
+      if (res == FR_EXIST) {
+        res = FR_OK;
+        continue;
       }
-      if (f_stat("MotorDriver", &fno) == FR_NO_FILE) {
-        res = f_mkdir("MotorDriver");
-        Error_Handler();
-      }
+      if (f_puts("|--MC--|----MD----|\n", &fil) == -1) res = FR_DISK_ERR;
+      f_close(&fil);
     }
     else if (res == FR_OK) {
       WriteDataToCard();
