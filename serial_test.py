@@ -1,4 +1,4 @@
-import serial, time
+import serial, time, random
 import numpy as np
 
 POLYNOMINAL = np.uint8(0x9b)
@@ -43,18 +43,34 @@ def msg_crc_calc(data, length):
 
 msg_crc_init()
 
-packet = bytearray()
-packet = [0x01, 0x01, 0x04, 0x05, 0x00, 0x05, 0xA0]
-crc = msg_crc_calc(packet, packet.__len__())
+MC_packet = bytearray()
+MD_packet = bytearray()
+MC_packet = [0x01, 0x01, 0x04, 0x01, 0x01, 0x01, 0x01, 0x00] # MotorController packet
+MD_packet = [0x01, 0x02, 0x04, 0x02, 0x02, 0x02, 0x02, 0x00] # MotorDriver packet
 
-for i in CrcTable:
-    if CrcTable[i] == crc:
-        print("CRC:", crc, "exist in CrcTable")
-
-packet.append(crc)
-print(packet)
+# Time scaler
+scale_2_ms = 1e-3
 
 while True:
-    time.sleep(0.1)
-    ser.write(packet)
-    #print("Outputting transmiter buffer: " + str(ser.out_waiting))
+    for j in range(0, 3):
+        MC_packet[j+3] = random.randint(0,1)
+
+    MD_packet[3] = random.randint(0, 28)
+    MD_packet[4] = random.randint(0, 10)
+    # generate RPMs in range 0-5600 rpm
+    rpm = random.randint(0, 5600)
+    MD_packet[5] = np.uint8(rpm >> 8)
+    MD_packet[6] = np.uint8(rpm)
+
+    # Calculate CRC
+    _MC_crc = msg_crc_calc(MC_packet, 7)
+    _MD_crc = msg_crc_calc(MD_packet, 7)
+
+    MC_packet[7] = _MC_crc
+    MD_packet[7] = _MD_crc
+
+    # Send frame
+    ser.write(MC_packet)
+    time.sleep(10 * scale_2_ms) # 10 ms
+    ser.write(MD_packet)
+    time.sleep(10 * scale_2_ms) # 10 ms
