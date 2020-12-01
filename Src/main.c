@@ -34,16 +34,6 @@
 #define MOTOR_CONTROLLER  0x01
 #define MOTOR_DRIVER      0x02
 
-struct
-{
-  // uint8_t addr; // For now only one address exist (0x01)
-  uint8_t Command;
-  uint8_t Length;
-  uint8_t MC_Payload[PAYLOAD_MAX_LEN]; // MotorController data
-  uint8_t MD_Payload[PAYLOAD_MAX_LEN]; // MotorDriver data
-} ML_Frame;
-
-
 SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart3;
 
@@ -51,7 +41,6 @@ FATFS fs; // file system
 FIL fil; // file object
 FILINFO fno; // file info
 uint8_t res = FR_NOT_READY; // to store the result
-//MSG_Message msg;  // received message
 
 /* capacity related variables */
 /* check capasity of the card */
