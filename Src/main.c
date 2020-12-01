@@ -144,35 +144,35 @@ void MSG_Received(uint8_t *buff, uint8_t len)
 
 void WriteDataToCard (void)
 {
-  TCHAR data[18] = {0};
+  TCHAR data[40] = {0};
   // Data received from MotorController
-  if (ML_Frame.Command == MOTOR_CONTROLLER) {
-    f_open(&fil, "MotorController/buttons.txt", FA_OPEN_ALWAYS|FA_WRITE);
-
-    uint8_t buttonA, buttonB, buttonC, buttonD;
-    buttonA = ML_Frame.MC_Payload[0];
-    buttonB = ML_Frame.MC_Payload[1];
-    buttonC = ML_Frame.MC_Payload[2];
-    buttonD = ML_Frame.MC_Payload[3];
-    sprintf(data, "%u|%u|%u|%u\n", buttonA, buttonB, buttonC, buttonD);
-    f_lseek(&fil, f_size(&fil));
-    if (f_puts(data, &fil) == -1) res = FR_DISK_ERR;
-    f_close(&fil);
-  }
-  // Data received from MotorDriver
-  else if (ML_Frame.Command == MOTOR_DRIVER) {
-    f_open(&fil, "MotorDriver/data.txt", FA_OPEN_ALWAYS|FA_WRITE);
-
+  if (mc_received == true && md_received == true
+     && offset_mc == 0 && offset_md == 0) {
+    // volts, ampere, rpm
     uint8_t vol, amp;
-    uint16_t rpm; // volts, ampere, rpm
-    vol = ML_Frame.MD_Payload[0];
-    amp = ML_Frame.MD_Payload[1];
-    rpm = (uint16_t)(ML_Frame.MD_Payload[2]) << 8; // MSB
-    rpm += (uint16_t)(ML_Frame.MD_Payload[3]);      // LSB
-    sprintf(data, "%u|%u|%u\n", vol, amp, rpm);
-    f_lseek(&fil, f_size(&fil));
-    if (f_puts(data, &fil) == -1) res = FR_DISK_ERR;
+    uint16_t rpm;
+    uint8_t buttonA, buttonB, buttonC, buttonD;
+
+    f_open(&fil, "data_from_ride.txt", FA_OPEN_ALWAYS|FA_WRITE);
+    for (uint8_t pos=0; pos < PAYLOAD_MAX_LEN; pos+=4) {
+      buttonA = MC_Payload[pos+0];
+      buttonB = MC_Payload[pos+1];
+      buttonC = MC_Payload[pos+2];
+      buttonD = MC_Payload[pos+3];
+
+      vol = MD_Payload[pos+0];
+      amp = MD_Payload[pos+1];
+      rpm = (uint16_t)(MD_Payload[pos+2]) << 8; // MSB
+      rpm += (uint16_t)(MD_Payload[pos+3]);     // LSB
+
+      sprintf(data, "%u-%u-%u-%u|%u-%u-%u\n", buttonA, buttonB, buttonC, buttonD, vol, amp, rpm);
+      f_lseek(&fil, f_size(&fil));
+      if (f_puts(data, &fil) == -1) res = FR_DISK_ERR;
+    }
     f_close(&fil);
+
+    mc_received = false;
+    md_received = false;
   }
 }
 
