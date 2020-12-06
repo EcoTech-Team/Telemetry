@@ -29,9 +29,8 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f1xx_hal.h"
-#include <stdlib.h>
-#include <stdbool.h>
 
+/* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
 /* Private defines -----------------------------------------------------------*/
@@ -39,6 +38,14 @@ void Error_Handler(void);
 #define SPI1_CS_GPIO_Port GPIOA
 #define SW3_Pin GPIO_PIN_15
 #define SW3_GPIO_Port GPIOA
+/* USER CODE BEGIN Private defines */
+#define LED3_Pin GPIO_PIN_1
+#define LED3_GPIO_Port GPIOA
+#define LED2_Pin GPIO_PIN_2
+#define LED2_GPIO_Port GPIOA
+#define LED1_Pin GPIO_PIN_3
+#define LED1_GPIO_Port GPIOA
+/* USER CODE END Private defines */
 
 #ifdef __cplusplus
 }
