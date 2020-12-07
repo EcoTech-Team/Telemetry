@@ -22,11 +22,11 @@ For this purpose `STM32 CubeMX` was used. [Here](https://www.youtube.com/watch?v
 
 For this purpose python script `analyze_data` was created. It require to run
 it with one additional parameter which provide a path to the location of telemetry
-folders `MotorDriver` and `MotorController`:
+folder:
 ```bash
 $ python3 analyze_data.py /mnt/Telemetry
 ```
-> Note: Telemetry folder includes `MotorDriver` and `MotorController` folders
+> Note: Telemetry folder includes one file with specific name
 
 Before run the script installing some packages is necessary. You can do it by
 running this command:
